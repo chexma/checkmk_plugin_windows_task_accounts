@@ -993,3 +993,20 @@ def test_rules_are_named_like_the_service() -> None:
         inventory_rules.rule_spec_windows_task_accounts_inventory,
     ):
         assert rule.title.localize(lambda x: x) == "Windows Task Accounts"
+
+
+# --- documentation ----------------------------------------------------------
+
+
+def test_man_page_has_each_key_once() -> None:
+    man_page = Path(ta.__file__).parent.parent / "checkman" / "windows_task_accounts"
+    keys = [line.split(":")[0] for line in man_page.read_text().splitlines() if line[:1].isalpha()]
+    assert keys == [
+        "title",
+        "agents",
+        "catalog",
+        "license",
+        "distribution",
+        "description",
+        "discovery",
+    ]

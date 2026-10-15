@@ -1,0 +1,54 @@
+title: Windows Task Accounts
+agents: windows
+catalog: os/services
+license: GPLv3
+distribution: Andre Eckstein
+description:
+ This check shows which Windows scheduled tasks do not run under a built-in
+ system account but under a user or service account: a domain account, a
+ local user or a managed service account. It needs the agent plugin
+ {windows_task_accounts.ps1}, which is deployed with the agent bakery rule
+ {Windows Task Accounts}.
+
+ The account of a task is its user, or its group if the task runs for a
+ group. Every account gets a kind, by its SID if the agent could translate
+ the account, otherwise by its name: Local System, Local Service, Network
+ Service, virtual account ({NT SERVICE\...}), group (e.g. {Users},
+ {INTERACTIVE}, any task without user but with a group), local user,
+ managed service account (name ends with {$}), domain account or unknown.
+ Tasks without user and group are a kind of their own. By default Local
+ System, Local Service, Network Service, virtual accounts, groups and tasks
+ without an account are built-in and not reported. The tasks of Windows
+ itself (folder {\Microsoft}) are ignored by default.
+
+ By default the service is {WARN} for every task whose account is not on
+ the allow list. With the rule {Windows Task Accounts} for the service you
+ can define the allow list (which account may run which tasks) and the
+ state for everything that is not on it, set which kinds are built-in
+ accounts, which task folders are ignored and which logon types are
+ evaluated (e.g. only {Password}: tasks whose password Windows stores),
+ ignore disabled tasks, define unwanted accounts with a state, and report
+ changes since the service discovery (added tasks, changed accounts and
+ removed tasks; tasks without an account are left out of this comparison).
+ To accept a change, update the service parameters in the service discovery
+ of the host. If the agent plugin reports an error the service is
+ {UNKNOWN} (configurable).
+
+ Account patterns are regular expressions that have to match the whole
+ account name or SID, ignoring case. {$HOSTNAME$} is replaced by the
+ computer name. Task patterns have to match the whole task, folder and
+ name, e.g. {\Backup\Nightly}.
+
+ Limitations: computer accounts ({DOMAIN\HOST$}) are shown as managed
+ service accounts. An account without domain that cannot be translated to
+ a SID is shown as unknown. The agent plugin needs Windows 8 / Server 2012
+ or later.
+
+ The tasks under reported accounts are also available in the HW/SW
+ inventory under {Software > Operating system > Windows Task Accounts}.
+ The HW/SW inventory rule {Windows Task Accounts} makes the table list
+ every scheduled task instead.
+
+discovery:
+ One service is created for each host whose agent sends the section
+ {windows_task_accounts} with at least one task or an error.

@@ -67,8 +67,8 @@ error|<message>
   A name starting with `.\` is translated as `<computer>\name`.
 - `<group id>` / `<group SID>`: `Principal.GroupId` and its SID, same rules.
 - `<logon type>`: `Principal.LogonType` (`Password`, `S4U`,
-  `InteractiveToken`, `InteractiveTokenOrPassword`, `ServiceAccount`,
-  `Group`, `None`).
+  `Interactive`, `InteractiveOrPassword`, `ServiceAccount`, `Group`,
+  `None`), the names `Get-ScheduledTask` reports.
 - `<run level>`: `Principal.RunLevel` (`Limited`, `Highest`).
 - `<state>`: `State` (`Ready`, `Running`, `Disabled`, `Queued`, `Unknown`).
 - `<machine SID>`: SID prefix of the local accounts, empty on domain
@@ -189,3 +189,12 @@ Test data uses fictional names only (CONTOSO, SRV-APP01, round SIDs).
 - COM fallback for systems without `Get-ScheduledTask`.
 - Whether an account is privileged.
 - One service per task or per account.
+
+## Amendments from the implementation
+
+1. Logon types are the names `Get-ScheduledTask` reports (`Password`, `S4U`, `Interactive`, `InteractiveOrPassword`, `ServiceAccount`, `Group`, `None`), not the task XML names (`InteractiveToken`). The rule option `logon_types` stores them in lower case; the form prefills `password` (the usual use: alert only on stored passwords), absent option = all.
+2. A baseline entry of a task without user carries `"group": True`, so a domain group in the baseline is classified as `group`, as in the current data.
+3. Kind `group` by SID: `S-1-5-32-*`, `S-1-2-*`, `S-1-1-0`, `S-1-5-4`, `S-1-5-6`, `S-1-5-11`; by name: `BUILTIN\*`, `Users`, `Administrators`, `Everyone`, `INTERACTIVE`, `Authenticated Users`, `NT AUTHORITY\INTERACTIVE` / `Authenticated Users` / `SERVICE`.
+4. Ignored paths are removed from the baseline before the comparison, so a removed or changed task under `\Microsoft\` is never reported unless the rule evaluates that folder.
+5. The inventory applies the default built-in kinds and the default ignored path unless `all_tasks` is set.
+6. An invalid ignored-path pattern yields an UNKNOWN result like any other invalid pattern.
