@@ -19,7 +19,7 @@
                                   'windows_task_accounts/rulesets/windows_task_accounts.py']},
  'name': 'windows_task_accounts',
  'title': 'Windows Task Accounts',
- 'version': '2.5.0',
+ 'version': '2.5.1',
  'version.min_required': '2.5.0',
  'version.packaged': 'cmk-mkp-tool 3.0.0',
  'version.usable_until': None}

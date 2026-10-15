@@ -9,6 +9,7 @@ Section <<<windows_task_accounts:sep(124)>>> (agent plugin windows_task_accounts
 
     computer|<computer name>|<machine SID>
     task|<path>|<name>|<user id>|<user SID>|<group id>|<group SID>|<logon type>|<run level>|<state>
+    unreadable|<path>|<name>|<message>
     error|<message>
 """
 
@@ -48,8 +49,7 @@ class WinTask:
     @property
     def identity(self) -> str:
         """Full name of the task, e.g. \\Backup\\Nightly."""
-        path = self.path if self.path.endswith("\\") else self.path + "\\"
-        return path + self.name
+        return task_identity(self.path, self.name)
 
     @property
     def account(self) -> str:
@@ -65,12 +65,30 @@ class WinTask:
         return not self.user and bool(self.group)
 
 
+def task_identity(path: str, name: str) -> str:
+    return (path if path.endswith("\\") else path + "\\") + name
+
+
+@dataclass(frozen=True)
+class Unreadable:
+    """A task that is registered but could not be read, e.g. its file is missing."""
+
+    path: str
+    name: str
+    message: str
+
+    @property
+    def identity(self) -> str:
+        return task_identity(self.path, self.name)
+
+
 @dataclass(frozen=True)
 class Section:
     computer: str
     machine_sid: str
     tasks: Sequence[WinTask]
     error: str | None
+    unreadable: Sequence[Unreadable] = ()
 
 
 def parse_windows_task_accounts(string_table: StringTable) -> Section | None:
@@ -78,7 +96,8 @@ def parse_windows_task_accounts(string_table: StringTable) -> Section | None:
         return None
     computer = machine_sid = ""
     tasks = []
-    errors = []
+    unreadable = []
+    errors: list[str] = []
     for line in string_table:
         if not line:
             continue
@@ -88,9 +107,12 @@ def parse_windows_task_accounts(string_table: StringTable) -> Section | None:
                 computer, machine_sid = (fields[1:] + ["", ""])[:2]
             case "task" if len(fields) > 2 and fields[2]:
                 tasks.append(WinTask(*(fields[1:] + [""] * 9)[:9]))
+            case "unreadable" if len(fields) > 2 and fields[2]:
+                unreadable.append(Unreadable(*(fields[1:] + [""] * 3)[:3]))
             case "error":
-                errors.append(" ".join(fields[1:]) or "unknown error")
-    return Section(computer, machine_sid.upper(), tasks, "; ".join(errors) or None)
+                if (error := " ".join(fields[1:]) or "unknown error") not in errors:
+                    errors.append(error)
+    return Section(computer, machine_sid.upper(), tasks, "; ".join(errors) or None, unreadable)
 
 
 agent_section_windows_task_accounts = AgentSection(
@@ -231,7 +253,7 @@ def account_key(account: str, sid: str) -> str:
 
 def discover_windows_task_accounts(section: Section) -> DiscoveryResult:
     if not section.tasks:
-        if section.error is not None:
+        if section.error is not None or section.unreadable:
             # No baseline from a failed query: the check skips the comparison then.
             yield Service()
         return
@@ -426,7 +448,7 @@ def _changes(
     if "removed" not in changes or section.error is not None:
         # An unreadable task must not look removed.
         return
-    existing = {t.identity for t in section.tasks}
+    existing = {t.identity for t in section.tasks} | {u.identity for u in section.unreadable}
     for name, old in sorted(discovered.items()):
         if name not in existing and is_relevant(name, old.account, old.sid, old.is_group):
             text = f"Task {name} ({_display(old.account)}) no longer exists"
@@ -459,7 +481,7 @@ def check_windows_task_accounts(params: Mapping[str, Any], section: Section) -> 
             state=State(params.get("query_error_state", 3)),
             summary=f"Agent plugin reported an error: {section.error}",
         )
-        if not section.tasks:
+        if not section.tasks and not section.unreadable:
             return
 
     builtin_kinds = set(params.get("builtin_kinds", DEFAULT_BUILTIN_KINDS))
@@ -569,6 +591,17 @@ def check_windows_task_accounts(params: Mapping[str, Any], section: Section) -> 
                 _account_details(account, reasons, denied),
             )
         )
+
+    unreadable_state = State(params.get("unreadable_state", 1))
+    for task in sorted(section.unreadable, key=lambda u: u.identity.lower()):
+        if not path_ignored(task.identity):
+            findings.append(
+                (
+                    unreadable_state,
+                    f"Task {task.identity} could not be read",
+                    f"{task.identity}: {task.message or 'unknown error'}",
+                )
+            )
 
     changes = params.get("changes")
     if changes:

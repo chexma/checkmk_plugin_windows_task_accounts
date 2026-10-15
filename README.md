@@ -113,6 +113,7 @@ SID, this works independently of the language of the operating system.
 | Unwanted accounts | Patterns with a state, e.g. for personal or administrator accounts; the first matching entry counts |
 | Changes since the service discovery | States for added tasks, changed accounts and removed tasks |
 | State if the agent plugin reported an error | Default UNKNOWN |
+| State for tasks that cannot be read | State for every registered task the agent plugin cannot read, named in the summary. Default WARN |
 
 Patterns are regular expressions that have to match the whole account,
 ignoring case. They are tried against the account name as configured in the
@@ -171,6 +172,16 @@ shows rows after a filter was submitted.
 - On a domain controller the SID classification works as everywhere; only the
   decision between local user and domain account falls back to the account
   name, because a domain controller has no machine SID.
+- A task that is registered in the task cache in the registry
+  (`HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache`)
+  but whose task file under `C:\Windows\System32\Tasks` is missing makes
+  Windows report "The system cannot find the file specified" for the whole
+  task list. The agent plugin then reads the registered tasks folder by folder
+  and task by task, and the service names each task it cannot read
+  (`Task \Vendor\Updater could not be read`, WARN by default). Delete such a
+  task in the Task Scheduler or remove its entries under `TaskCache`. On hosts
+  with such a task the plugin needs more time; consider running it
+  asynchronously (agent bakery rule).
 - If the agent plugin reports an error, the tasks it could read are still
   evaluated (and listed in the inventory), but removed tasks are not reported
   while the error lasts: an unreadable task must not look removed. Added tasks
@@ -186,6 +197,7 @@ shows rows after a filter was submitted.
 <<<windows_task_accounts:sep(124)>>>
 computer|<computer name>|<machine SID>
 task|<folder>|<name>|<user>|<user SID>|<group>|<group SID>|<logon type>|<run level>|<state>
+unreadable|<folder>|<name>|<message>
 error|<message>
 ```
 

@@ -908,6 +908,109 @@ def test_malformed_baseline_does_not_crash(section) -> None:
     ]
 
 
+# --- check: tasks that cannot be read ---------------------------------------
+
+MISSING = (
+    "registered, but the task file is missing (Das System kann die angegebene Datei nicht finden.)"
+)
+
+
+def _with_unreadable(*lines: str, table=None) -> ta.Section:
+    """STRING_TABLE (or table) plus unreadable lines "path|name|message"."""
+    section = ta.parse_windows_task_accounts(
+        list(STRING_TABLE if table is None else table)
+        + [["unreadable", *line.split("|")] for line in lines]
+    )
+    assert section is not None
+    return section
+
+
+def test_parse_unreadable_tasks() -> None:
+    section = _with_unreadable(f"\\Vendor\\|Updater|{MISSING}", "\\|Short")
+    assert section.error is None
+    assert section.unreadable == [
+        ta.Unreadable("\\Vendor\\", "Updater", MISSING),
+        ta.Unreadable("\\", "Short", ""),
+    ]
+    assert [u.identity for u in section.unreadable] == ["\\Vendor\\Updater", "\\Short"]
+
+
+def test_parse_unreadable_without_name_is_skipped() -> None:
+    assert _with_unreadable("\\|", "\\").unreadable == []
+
+
+def test_parse_drops_duplicate_error_lines() -> None:
+    section = ta.parse_windows_task_accounts(
+        [["computer", "SRV-APP01", ""], ["error", "boom"], ["error", "other"], ["error", "boom"]]
+    )
+    assert section is not None
+    assert section.error == "boom; other"
+
+
+def test_unreadable_task_is_warn_by_default(section) -> None:
+    defaults = ta.check_plugin_windows_task_accounts.check_default_parameters
+    unreadable = _with_unreadable(f"\\Vendor\\|Updater|{MISSING}")
+    results = _results({**defaults, "not_allowed_state": 0}, unreadable)
+    assert results[0].summary == "6 tasks under 5 accounts"
+    (finding,) = [r for r in results if r.state is not State.OK]
+    assert finding.state is State.WARN
+    assert finding.summary == "Task \\Vendor\\Updater could not be read"
+    assert finding.details == f"\\Vendor\\Updater: {MISSING}"
+
+
+def test_unreadable_state(section) -> None:
+    unreadable = _with_unreadable("\\Vendor\\|Updater|boom")
+    assert _notices({"unreadable_state": 2}, unreadable) == {
+        "Task \\Vendor\\Updater could not be read": State.CRIT
+    }
+    assert _notices({"unreadable_state": 0}, unreadable) == {}
+
+
+def test_unreadable_tasks_in_ignored_paths_are_not_reported(section) -> None:
+    unreadable = _with_unreadable("\\Microsoft\\Windows\\|Broken|boom")
+    assert _notices({}, unreadable) == {}
+    assert _notices({"ignored_paths": []}, unreadable) == {
+        "Task \\Microsoft\\Windows\\Broken could not be read": State.WARN
+    }
+
+
+def test_many_unreadable_tasks_are_counted_in_the_summary(section) -> None:
+    unreadable = _with_unreadable(*(f"\\Vendor\\|Job{i:02}|boom" for i in range(12)))
+    not_ok = [r for r in _results({"not_allowed_state": 0}, unreadable) if r.state is not State.OK]
+    assert len(not_ok) == 11
+    assert not_ok[10].summary == "2 more findings (see details)"
+    assert not_ok[10].details == "\\Vendor\\Job10: boom(!)\n\\Vendor\\Job11: boom(!)"
+
+
+def test_unreadable_tasks_without_readable_tasks() -> None:
+    section = ta.parse_windows_task_accounts(
+        [["computer", "SRV-APP01", MACHINE_SID], ["unreadable", "\\", "Broken", "boom"]]
+    )
+    assert section is not None
+    assert list(ta.discover_windows_task_accounts(section)) == [Service()]
+    assert _notices({}, section) == {"Task \\Broken could not be read": State.WARN}
+
+
+def test_unreadable_task_is_not_reported_as_removed(section) -> None:
+    params = {"changes": CHANGES, **_discovered(section)}
+    table = [
+        line for line in STRING_TABLE if line[0] != "task" or line[2] not in ("UserLogon", "Sync")
+    ]
+    unreadable = _with_unreadable("\\|UserLogon|boom", table=table)
+    assert _notices(params, unreadable) == {
+        "Task \\UserLogon could not be read": State.WARN,
+        "Task \\Sync (svc_sync@contoso.example) no longer exists": State.UNKNOWN,
+    }
+
+
+def test_unreadable_tasks_and_an_error_line(section) -> None:
+    broken = _with_unreadable("\\|Broken|boom", table=[*STRING_TABLE, ["error", "Access denied"]])
+    assert _notices({}, broken) == {
+        "Agent plugin reported an error: Access denied": State.UNKNOWN,
+        "Task \\Broken could not be read": State.WARN,
+    }
+
+
 # --- inventory --------------------------------------------------------------
 
 
@@ -989,6 +1092,7 @@ def test_check_rule_form_builds() -> None:
         "forbidden",
         "changes",
         "query_error_state",
+        "unreadable_state",
     }
     assert tuple(form.elements["builtin_kinds"].parameter_form.prefill.value) == (
         ta.DEFAULT_BUILTIN_KINDS
@@ -1073,6 +1177,8 @@ def test_agent_plugin_exists_and_is_ascii() -> None:
     text = source.read_text()
     assert "<<<windows_task_accounts:sep(124)>>>" in text
     assert "Get-ScheduledTask" in text
+    assert "'unreadable'" in text
+    assert "TaskCache\\Tree" in text
 
 
 def test_rules_are_named_like_the_service() -> None:

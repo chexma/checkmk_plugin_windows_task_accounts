@@ -33,7 +33,10 @@ description:
  To accept a change, update the service parameters in the service discovery
  of the host. If the agent plugin reports an error the service is
  {UNKNOWN} (configurable); tasks it could still read are evaluated, but
- removed tasks are not reported meanwhile.
+ removed tasks are not reported meanwhile. A task that is registered but
+ cannot be read, typically because its task file is missing, is named in
+ the summary with the state {WARN} (configurable); the other tasks are
+ evaluated as usual.
 
  A typical first rule: per-user tasks with the logon type {Interactive}
  (e.g. {\OneDrive Reporting Task-...}) are reported by default. Restrict the

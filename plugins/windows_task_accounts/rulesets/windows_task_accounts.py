@@ -278,6 +278,23 @@ def _parameter_form() -> Dictionary:
                     prefill=DefaultValue(ServiceState.UNKNOWN),
                 ),
             ),
+            "unreadable_state": DictElement(
+                parameter_form=ServiceState(
+                    title=Title("State for tasks that cannot be read"),
+                    help_text=Help(
+                        "State for every task that is registered but cannot be read, by "
+                        "default WARN. The other tasks are evaluated as usual. The usual "
+                        "cause is a task that is still registered in the registry (under "
+                        "<tt>HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule"
+                        "\\TaskCache</tt>) whose task file under "
+                        "<tt>C:\\Windows\\System32\\Tasks</tt> is missing, e.g. after an "
+                        "uninstallation. Delete the task in the Task Scheduler, or remove "
+                        "its entries under <tt>TaskCache</tt>. Tasks matching <i>Ignored "
+                        "tasks</i> are not reported."
+                    ),
+                    prefill=DefaultValue(ServiceState.WARN),
+                ),
+            ),
         },
     )
 
