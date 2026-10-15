@@ -55,8 +55,9 @@ description:
 
  The tasks under reported accounts are also available in the HW/SW
  inventory under {Software > Operating system > Windows Task Accounts}.
- The HW/SW inventory rule {Windows Task Accounts} makes the table list
- every scheduled task instead.
+ The HW/SW inventory rule {Windows Task Accounts} can add the tasks under
+ built-in accounts and has its own list of ignored tasks (default
+ {\\Microsoft\\.*}), independent of the service rule.
 
 discovery:
  One service is created for each host whose agent sends the section

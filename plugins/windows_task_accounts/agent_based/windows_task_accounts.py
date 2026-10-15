@@ -637,11 +637,17 @@ check_plugin_windows_task_accounts = CheckPlugin(
 
 
 def inventory_windows_task_accounts(params: Mapping[str, Any], section: Section) -> InventoryResult:
-    ignored_paths, _invalid = compile_patterns(DEFAULT_IGNORED_PATHS, section.computer)
+    all_tasks = params.get("all_tasks", False)
+    # Rules saved before 2.5.2 have no ignored_paths: all_tasks listed every task.
+    default_paths = () if all_tasks else DEFAULT_IGNORED_PATHS
+    # An inventory plugin cannot report invalid patterns; they are skipped.
+    ignored_paths, _invalid = compile_patterns(
+        params.get("ignored_paths", default_paths), section.computer
+    )
     for task in section.tasks:
         kind = kind_of_task(task, section)
-        if not params.get("all_tasks") and (
-            kind in DEFAULT_BUILTIN_KINDS or matches_any(ignored_paths, [task.identity])
+        if (not all_tasks and kind in DEFAULT_BUILTIN_KINDS) or matches_any(
+            ignored_paths, [task.identity]
         ):
             continue
         yield TableRow(

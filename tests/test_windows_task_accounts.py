@@ -1028,6 +1028,46 @@ def test_inventory_can_list_all_tasks(section) -> None:
     assert rows[0].inventory_columns["kind"] == "local_system"
 
 
+def _inventoried(params, section) -> list[str]:
+    return [r.key_columns["task"] for r in ta.inventory_windows_task_accounts(params, section)]
+
+
+def test_inventory_ignored_paths_replace_the_default(section) -> None:
+    params = {"all_tasks": False, "ignored_paths": ["\\\\backup\\\\.*"]}
+    assert _inventoried(params, section) == [
+        "\\Microsoft\\Office\\Telemetry",
+        "\\LocalJob",
+        "\\Reports\\Export",
+        "\\UserLogon",
+        "\\Sync",
+    ]
+
+
+def test_inventory_empty_ignored_paths_list_microsoft_tasks(section) -> None:
+    params = {"all_tasks": False, "ignored_paths": []}
+    assert "\\Microsoft\\Office\\Telemetry" in _inventoried(params, section)
+
+
+def test_inventory_all_tasks_without_ignored_paths_lists_everything(section) -> None:
+    # Rules saved before 2.5.2 have no ignored_paths: all_tasks keeps listing every task.
+    assert len(_inventoried({"all_tasks": True}, section)) == len(section.tasks)
+
+
+def test_inventory_all_tasks_with_ignored_paths(section) -> None:
+    params = {"all_tasks": True, "ignored_paths": ["\\\\Microsoft\\\\.*"]}
+    inventoried = _inventoried(params, section)
+    assert not [t for t in inventoried if t.startswith("\\Microsoft\\")]
+    assert "\\Updater" in inventoried
+    assert len(inventoried) == len(section.tasks) - 3
+
+
+def test_inventory_invalid_ignored_path_is_skipped(section) -> None:
+    params = {"all_tasks": False, "ignored_paths": ["(", "\\\\Sync"]}
+    inventoried = _inventoried(params, section)
+    assert "\\Sync" not in inventoried
+    assert "\\Microsoft\\Office\\Telemetry" in inventoried
+
+
 def test_inventory_rows(section) -> None:
     rows = list(ta.inventory_windows_task_accounts(INVENTORY_DEFAULTS, section))
     assert [r.key_columns["task"] for r in rows] == [
@@ -1061,7 +1101,9 @@ def test_inventory_rule_form_builds() -> None:
         == inventory_rules.rule_spec_windows_task_accounts_inventory.name
     )
     form = inventory_rules.rule_spec_windows_task_accounts_inventory.parameter_form()
-    assert set(form.elements) == set(INVENTORY_DEFAULTS)
+    assert set(form.elements) == {*INVENTORY_DEFAULTS, "ignored_paths"}
+    assert form.elements["all_tasks"].required
+    assert not form.elements["ignored_paths"].required
 
 
 def test_inventory_ui_knows_every_column(section) -> None:

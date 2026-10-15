@@ -5,6 +5,13 @@ and the release tags `v<version>`.
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-10-15
+
+- HW/SW inventory rule: new setting *Ignored tasks* (default
+  `\\Microsoft\\.*`), independent of the service rule. The option *Tasks in
+  the inventory table* now means "also list tasks under built-in accounts";
+  without *Ignored tasks* it still lists every task as before.
+
 ## [2.5.1] - 2026-10-15
 
 - A scheduled task that is registered but cannot be read (typically: its

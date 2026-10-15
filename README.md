@@ -156,9 +156,16 @@ task that is reported by default (not under a built-in kind, not in
 `\Microsoft`): task, account, kind, logon type, run level and state. A host
 without such tasks has no table.
 
-With the rule *Windows Task Accounts* under *Setup > Hosts > HW/SW inventory
-rules* the table can list every scheduled task instead, also the ones under
-built-in accounts and of Windows itself; the column *Kind* tells them apart.
+The rule *Windows Task Accounts* under *Setup > Hosts > HW/SW inventory
+rules* has two settings. The service rule does not affect the table:
+
+| Setting | Effect |
+|---|---|
+| Tasks in the inventory table | Also list the tasks under built-in accounts; the column *Kind* tells them apart |
+| Ignored tasks | Patterns for tasks (folder and name, like in the service rule) that are not listed. Default `\\Microsoft\\.*`; the list replaces the default. Without this setting, listing the built-in accounts lists the tasks of Windows itself too. Invalid patterns are skipped |
+
+The table is rebuilt with every HW/SW inventory run: tasks that are no longer
+listed disappear from it (see the inventory history of the host).
 
 The view `invtaskaccounts` *Windows Task Accounts* (search:
 `invtaskaccounts_search`) finds the hosts and tasks that use an account; it
