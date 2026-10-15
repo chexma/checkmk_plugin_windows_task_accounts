@@ -7,6 +7,12 @@
 import pytest
 from cmk.agent_based.v2 import Metric, Result, Service, State, TableRow
 from cmk_addons.plugins.windows_task_accounts.agent_based import windows_task_accounts as ta
+from cmk_addons.plugins.windows_task_accounts.graphing import windows_task_accounts as graphing
+from cmk_addons.plugins.windows_task_accounts.inventory_ui import (
+    windows_task_accounts as inventory_ui,
+)
+from cmk_addons.plugins.windows_task_accounts.rulesets import inventory as inventory_rules
+from cmk_addons.plugins.windows_task_accounts.rulesets import windows_task_accounts as rules
 
 MACHINE_SID = "S-1-5-21-1000-2000-3000"
 DOMAIN_SID = "S-1-5-21-4000-5000-6000"
@@ -847,3 +853,87 @@ def test_inventory_rows(section) -> None:
         },
         status_columns={"state": "Ready"},
     )
+
+
+# --- rule forms, inventory UI, graphing -------------------------------------
+
+
+def test_inventory_rule_form_builds() -> None:
+    plugin = ta.inventory_plugin_windows_task_accounts
+    assert (
+        plugin.inventory_ruleset_name
+        == inventory_rules.rule_spec_windows_task_accounts_inventory.name
+    )
+    form = inventory_rules.rule_spec_windows_task_accounts_inventory.parameter_form()
+    assert set(form.elements) == set(INVENTORY_DEFAULTS)
+
+
+def test_inventory_ui_knows_every_column(section) -> None:
+    row = next(iter(ta.inventory_windows_task_accounts(INVENTORY_DEFAULTS, section)))
+    node = inventory_ui.node_software_os_windows_task_accounts
+    assert node.title.localize(lambda x: x) == "Windows Task Accounts"
+    assert node.table.view.name == "invtaskaccounts"
+    assert node.table.view.title.localize(lambda x: x) == "Windows Task Accounts"
+    assert list(node.path) == row.path
+    assert set(node.table.columns) == {
+        *row.key_columns,
+        *row.inventory_columns,
+        *row.status_columns,
+    }
+    assert set(node.table.columns["kind"].mapping) == set(ta.KIND_TITLES)
+
+
+def test_check_rule_form_builds() -> None:
+    form = rules.rule_spec_windows_task_accounts.parameter_form()
+    assert set(form.elements) == {
+        "builtin_kinds",
+        "ignored_paths",
+        "logon_types",
+        "ignore_disabled",
+        "allowed",
+        "allowed_additional",
+        "not_allowed_state",
+        "forbidden",
+        "changes",
+        "query_error_state",
+    }
+    assert tuple(form.elements["builtin_kinds"].parameter_form.prefill.value) == (
+        ta.DEFAULT_BUILTIN_KINDS
+    )
+    kinds = {e.name for e in form.elements["builtin_kinds"].parameter_form.elements}
+    assert kinds == set(ta.KIND_TITLES)
+    logon_types = {e.name for e in form.elements["logon_types"].parameter_form.elements}
+    assert logon_types == set(ta.LOGON_TYPES)
+
+
+def test_allow_list_entries_have_task_and_account() -> None:
+    form = rules.rule_spec_windows_task_accounts.parameter_form()
+    for name in ("allowed", "allowed_additional"):
+        entry = form.elements[name].parameter_form.element_template
+        assert list(entry.elements) == ["task", "account"]
+        assert not entry.elements["task"].required
+        assert entry.elements["account"].required
+
+
+def test_check_rule_form_prefills_the_default_state() -> None:
+    form = rules.rule_spec_windows_task_accounts.parameter_form()
+    defaults = ta.check_plugin_windows_task_accounts.check_default_parameters
+    assert form.elements["not_allowed_state"].parameter_form.prefill.value == (
+        defaults["not_allowed_state"]
+    )
+
+
+def test_check_rule_form_ignores_the_discovered_baseline() -> None:
+    # The discovery page validates the effective parameters with this form.
+    form = rules.rule_spec_windows_task_accounts.parameter_form()
+    assert "discovered_tasks" in form.ignored_elements
+
+
+def test_graphing_uses_the_metrics_of_the_check(section) -> None:
+    yielded = {m.name for m in ta.check_windows_task_accounts({}, section) if isinstance(m, Metric)}
+    assert yielded == {
+        graphing.metric_task_account_tasks.name,
+        graphing.metric_task_account_accounts.name,
+    }
+    assert set(graphing.graph_windows_task_accounts.simple_lines) == yielded
+    assert set(graphing.perfometer_windows_task_accounts.segments) <= yielded
