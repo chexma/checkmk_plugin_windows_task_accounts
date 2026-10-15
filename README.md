@@ -104,7 +104,7 @@ SID, this works independently of the language of the operating system.
 | Setting | Effect |
 |---|---|
 | Built-in accounts | Which kinds are unremarkable and not reported |
-| Ignored tasks | Task patterns that are not evaluated at all. Default: `\\Microsoft\\.*`, the tasks of Windows itself; an empty list evaluates them too |
+| Ignored tasks | Task patterns that are not evaluated at all. Default: `\\Microsoft\\.*`, the tasks of Windows itself; the list replaces this default, so add `\\Microsoft\\.*` to keep ignoring the tasks of Windows itself; an empty list evaluates them too |
 | Evaluated logon types | Only tasks with these logon types are evaluated, e.g. only `Password` (Windows stores the password of the account). `S4U` stores no password, `Interactive` runs only while the user is logged on. Default: all |
 | Disabled tasks | Ignore tasks in the state Disabled (by default they are evaluated: Windows keeps their credentials) |
 | Allowed accounts | Which account may run which tasks: a pattern for the account and optionally one for the tasks. Without tasks the account is allowed for every task of the host. Allowed combinations are OK and exempt from the other settings |
@@ -128,6 +128,11 @@ task and against its SID:
   `.\backup`.
 - An account configured in several spellings (`CONTOSO\svc_backup` and
   `svc_backup@contoso.example`) is matched under each of them.
+
+A typical first rule: per-user tasks with the logon type `Interactive` (for
+example `\OneDrive Reporting Task-...`) are reported by default. Restrict
+*Evaluated logon types* to `Password`, or allow them with a task pattern such
+as `\\OneDrive .*`.
 
 ### Changes since the service discovery
 
@@ -163,9 +168,14 @@ shows rows after a filter was submitted.
 - Computer accounts (`DOMAIN\HOST$`) are shown as managed service accounts.
 - An account without domain that cannot be translated to a SID is shown as
   unknown.
-- On a domain controller the accounts are classified by name, because there
-  are no local accounts to tell the machine SID from.
-- While the agent plugin reports an error, the inventory table is empty.
+- On a domain controller the SID classification works as everywhere; only the
+  decision between local user and domain account falls back to the account
+  name, because a domain controller has no machine SID.
+- If the agent plugin reports an error, the tasks it could read are still
+  evaluated (and listed in the inventory), but removed tasks are not reported
+  while the error lasts: an unreadable task must not look removed. Added tasks
+  and changed accounts are still reported. Without any readable task only the
+  error is shown.
 - Not covered: services (see the plugin Windows Service Accounts), IIS
   application pools and other places that store credentials; whether an
   account is privileged; Linux.

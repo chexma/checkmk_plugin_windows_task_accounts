@@ -78,7 +78,7 @@ def parse_windows_task_accounts(string_table: StringTable) -> Section | None:
         return None
     computer = machine_sid = ""
     tasks = []
-    error = None
+    errors = []
     for line in string_table:
         if not line:
             continue
@@ -89,8 +89,8 @@ def parse_windows_task_accounts(string_table: StringTable) -> Section | None:
             case "task" if len(fields) > 2 and fields[2]:
                 tasks.append(WinTask(*(fields[1:] + [""] * 9)[:9]))
             case "error":
-                error = " ".join(fields[1:]) or "unknown error"
-    return Section(computer, machine_sid.upper(), tasks, error)
+                errors.append(" ".join(fields[1:]) or "unknown error")
+    return Section(computer, machine_sid.upper(), tasks, "; ".join(errors) or None)
 
 
 agent_section_windows_task_accounts = AgentSection(
@@ -230,18 +230,18 @@ def account_key(account: str, sid: str) -> str:
 
 
 def discover_windows_task_accounts(section: Section) -> DiscoveryResult:
-    if section.error is not None:
-        # No baseline from a failed query: the check skips the comparison then.
-        yield Service()
-        return
     if not section.tasks:
+        if section.error is not None:
+            # No baseline from a failed query: the check skips the comparison then.
+            yield Service()
         return
     yield Service(
         parameters={
             "discovered_tasks": {
                 # "group": the task has no user, see WinTask.is_group
-                t.identity: {"account": t.account, "sid": t.sid}
+                t.identity: {"account": t.account, "sid": t.sid, "logon_type": t.logon_type}
                 | ({"group": True} if t.is_group else {})
+                | ({"disabled": True} if t.state.lower() == "disabled" else {})
                 for t in section.tasks
                 if t.account or t.sid
             }
@@ -366,6 +366,8 @@ class _Known:
     account: str
     sid: str
     is_group: bool
+    logon_type: str = ""
+    disabled: bool = False
 
 
 def _baseline(params: Mapping[str, Any]) -> dict[str, _Known] | None:
@@ -375,7 +377,11 @@ def _baseline(params: Mapping[str, Any]) -> dict[str, _Known] | None:
         return None
     return {
         str(name): _Known(
-            str(old.get("account", "")), str(old.get("sid", "")), bool(old.get("group"))
+            str(old.get("account", "")),
+            str(old.get("sid", "")),
+            bool(old.get("group")),
+            str(old.get("logon_type", "")),
+            bool(old.get("disabled")),
         )
         for name, old in raw.items()
         if isinstance(old, Mapping)
@@ -417,7 +423,8 @@ def _changes(
             text = f"Account of task {task.identity} changed from {old_name} to {new_name}"
             yield State(changes["changed"]), text, text
 
-    if "removed" not in changes:
+    if "removed" not in changes or section.error is not None:
+        # An unreadable task must not look removed.
         return
     existing = {t.identity for t in section.tasks}
     for name, old in sorted(discovered.items()):
@@ -478,7 +485,14 @@ def check_windows_task_accounts(params: Mapping[str, Any], section: Section) -> 
 
     discovered = _baseline(params)
     if discovered is not None:
-        discovered = {name: old for name, old in discovered.items() if not path_ignored(name)}
+        # The rule filters both sides of the comparison.
+        discovered = {
+            name: old
+            for name, old in discovered.items()
+            if not path_ignored(name)
+            and (logon_types is None or not old.logon_type or old.logon_type.lower() in logon_types)
+            and not (ignore_disabled and old.disabled)
+        }
     # If the agent could not translate an account this time (domain not
     # reachable), patterns written against the SID still have to match.
     known_sids = {old.account.lower(): old.sid for old in (discovered or {}).values() if old.sid}
@@ -503,8 +517,9 @@ def check_windows_task_accounts(params: Mapping[str, Any], section: Section) -> 
     # (task pattern or None for every task, account pattern)
     allowed: list[tuple[re.Pattern[str] | None, re.Pattern[str]]] = []
     for entry in [*params.get("allowed", []), *params.get("allowed_additional", [])]:
+        account_patterns = compiled(entry["account"])
         task_patterns = compiled(entry["task"]) if entry.get("task") else [None]
-        allowed += [(tp, ap) for tp in task_patterns for ap in compiled(entry["account"])]
+        allowed += [(tp, ap) for tp in task_patterns for ap in account_patterns]
     forbidden = [
         (pattern, State(entry["state"]))
         for entry in params.get("forbidden", [])
@@ -556,7 +571,7 @@ def check_windows_task_accounts(params: Mapping[str, Any], section: Section) -> 
         )
 
     changes = params.get("changes")
-    if changes and section.error is None:
+    if changes:
         if discovered is None:
             yield Result(
                 state=State.OK,

@@ -139,6 +139,14 @@ def test_parse_empty_and_missing_fields() -> None:
     assert section.tasks == [ta.WinTask("\\", "Short", "CONTOSO\\x", "", "", "", "", "", "")]
 
 
+def test_parse_joins_all_error_lines() -> None:
+    section = ta.parse_windows_task_accounts(
+        [["computer", "SRV-APP01", ""], ["error", "first"], ["error", "second"]]
+    )
+    assert section is not None
+    assert section.error == "first; second"
+
+
 def test_parse_error_line() -> None:
     section = ta.parse_windows_task_accounts(
         [["computer", "SRV-APP01", MACHINE_SID], ["error", "Access denied"]]
@@ -250,17 +258,33 @@ def test_discovery_stores_every_task_with_a_principal(section) -> None:
     assert discovered["\\Microsoft\\Windows\\Defrag\\ScheduledDefrag"] == {
         "account": "SYSTEM",
         "sid": "S-1-5-18",
+        "logon_type": "ServiceAccount",
     }
     assert discovered["\\Backup\\Nightly"] == {
         "account": "CONTOSO\\svc_backup",
         "sid": DOMAIN_SID + "-1105",
+        "logon_type": "Password",
     }
-    assert discovered["\\UserLogon"] == {"account": "CONTOSO\\old_admin", "sid": ""}
+    assert discovered["\\Backup\\Weekly"]["disabled"] is True
+    assert "disabled" not in discovered["\\Backup\\Nightly"]
+    assert discovered["\\UserLogon"] == {
+        "account": "CONTOSO\\old_admin",
+        "sid": "",
+        "logon_type": "Interactive",
+    }
     assert discovered["\\AppUsers"] == {
         "account": "CONTOSO\\App Users",
         "sid": DOMAIN_SID + "-2000",
+        "logon_type": "Group",
         "group": True,
     }
+
+
+def test_discovery_with_tasks_and_error_stores_a_baseline() -> None:
+    section = _parse("\\|Job|CONTOSO\\svc_job||||Password|Limited|Ready")
+    section = ta.Section(section.computer, section.machine_sid, section.tasks, "boom")
+    discovered = _discovered(section)["discovered_tasks"]
+    assert list(discovered) == ["\\Job"]
 
 
 def test_discovery_on_error_has_no_baseline() -> None:
@@ -525,6 +549,14 @@ def test_unwanted_account_is_checked_if_one_of_its_tasks_is_not_allowed(section)
     assert _notices(params, section) == {}
 
 
+def test_invalid_account_pattern_is_reported_with_an_invalid_task_pattern(section) -> None:
+    params = {"allowed": [{"task": "(", "account": "["}]}
+    assert _notices(params, section).keys() >= {
+        "Invalid pattern in rule: (",
+        "Invalid pattern in rule: [",
+    }
+
+
 def test_invalid_task_pattern_is_reported(section) -> None:
     params = {"allowed": [{"task": "(", "account": ".*"}]}
     assert _notices(params, section) == {"Invalid pattern in rule: (": State.UNKNOWN}
@@ -776,6 +808,63 @@ def test_no_change_detection_while_the_plugin_reports_an_error(section) -> None:
     )
     params = {"changes": CHANGES, **_discovered(section)}
     assert list(_notices(params, broken)) == ["Agent plugin reported an error: boom"]
+
+
+def test_removed_task_filtered_by_logon_type_is_not_reported(section) -> None:
+    params = {"changes": CHANGES, "logon_types": ["password"], **_discovered(section)}
+    # UserLogon is an Interactive task: never evaluated, so its removal is no finding.
+    assert _notices(params, _without("UserLogon")) == {}
+    params["logon_types"] = ["interactive"]
+    assert len(_notices(params, _without("UserLogon"))) == 1
+
+
+def test_removed_disabled_task_respects_ignore_disabled(section) -> None:
+    params = {"changes": {"removed": 1}, "allowed": [], **_discovered(section)}
+    # Weekly is Disabled and runs as svc_backup.
+    gone = _without("Weekly")
+    assert "Task \\Backup\\Weekly (CONTOSO\\svc_backup) no longer exists" in _notices(params, gone)
+    params["ignore_disabled"] = True
+    assert _notices(params, gone) == {}
+
+
+def test_removed_task_of_an_old_baseline_without_logon_type_is_evaluated(section) -> None:
+    baseline = {"\\Gone": {"account": "CONTOSO\\svc_gone", "sid": ""}}
+    params = {
+        "changes": {"removed": 3},
+        "logon_types": ["password"],
+        "ignore_disabled": True,
+        "discovered_tasks": baseline,
+    }
+    assert _notices(params, section) == {
+        "Task \\Gone (CONTOSO\\svc_gone) no longer exists": State.UNKNOWN
+    }
+
+
+def _with_error(section: ta.Section, error: str = "boom") -> ta.Section:
+    return ta.Section(section.computer, section.machine_sid, section.tasks, error)
+
+
+def test_error_with_tasks_still_evaluates_accounts_and_added_changed(section) -> None:
+    params = {"changes": CHANGES, "not_allowed_state": 1, **_discovered(section)}
+    changed = _with_error(
+        _with(
+            "\\|New|CONTOSO\\svc_new||||Password|Limited|Ready",
+            f"\\Backup\\|Nightly|CONTOSO\\svc_other|{DOMAIN_SID}-1200|||Password|Highest|Ready",
+        )
+    )
+    notices = _notices(params, changed)
+    assert notices["Agent plugin reported an error: boom"] is State.UNKNOWN
+    assert notices["New task \\New runs as CONTOSO\\svc_new"] is State.WARN
+    assert any(text.startswith("Account of task \\Backup\\Nightly changed") for text in notices)
+    assert any("not on the allow list" in text for text in notices)
+
+
+def test_error_with_tasks_does_not_report_removed_tasks(section) -> None:
+    params = {"changes": CHANGES, **_discovered(section)}
+    broken = _with_error(_without("UserLogon"))
+    assert "Agent plugin reported an error: boom" in _notices(params, broken)
+    assert all("no longer exists" not in text for text in _notices(params, broken))
+    assert any("no longer exists" in text for text in _notices(params, _without("UserLogon")))
 
 
 def test_change_to_an_account_allowed_for_another_task_only_is_reported(section) -> None:

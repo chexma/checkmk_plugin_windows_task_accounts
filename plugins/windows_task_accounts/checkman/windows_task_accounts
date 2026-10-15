@@ -32,7 +32,13 @@ description:
  removed tasks; tasks without an account are left out of this comparison).
  To accept a change, update the service parameters in the service discovery
  of the host. If the agent plugin reports an error the service is
- {UNKNOWN} (configurable).
+ {UNKNOWN} (configurable); tasks it could still read are evaluated, but
+ removed tasks are not reported meanwhile.
+
+ A typical first rule: per-user tasks with the logon type {Interactive}
+ (e.g. {\OneDrive Reporting Task-...}) are reported by default. Restrict the
+ logon types to {Password} or allow them with a task pattern such as
+ {\\OneDrive .*}.
 
  Account patterns are regular expressions that have to match the whole
  account name or SID, ignoring case. {$HOSTNAME$} is replaced by the

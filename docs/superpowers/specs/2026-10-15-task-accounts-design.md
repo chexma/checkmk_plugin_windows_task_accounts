@@ -198,3 +198,5 @@ Test data uses fictional names only (CONTOSO, SRV-APP01, round SIDs).
 4. Ignored paths are removed from the baseline before the comparison, so a removed or changed task under `\Microsoft\` is never reported unless the rule evaluates that folder.
 5. The inventory applies the default built-in kinds and the default ignored path unless `all_tasks` is set.
 6. An invalid ignored-path pattern yields an UNKNOWN result like any other invalid pattern.
+7. The baseline entries also carry `logon_type` and, for disabled tasks, `disabled: true`. The check applies `logon_types` and `ignore_disabled` to the baseline as well (entries without a logon type are still evaluated), so a removed task that was never evaluated is not reported.
+8. One unreadable task does not wipe out the section: the agent prints all readable tasks and one `error|` line per enumeration error; the parser joins all error lines with `; `. With tasks and an error the discovery stores the baseline and the check evaluates the tasks and reports added/changed, but not removed tasks while the error lasts. With an error and no tasks only the error result is shown.

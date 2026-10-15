@@ -17,6 +17,9 @@
     task|<path>|<name>|<user id>|<user SID>|<group id>|<group SID>|<logon type>|<run level>|<state>
     error|<message>
 
+    A task that cannot be read (corrupt registration) does not stop the
+    listing: the other tasks are printed, then one error line per problem.
+
     Keep this file ASCII only: Windows PowerShell 5.1 reads scripts without a
     BOM in the ANSI code page.
 #>
@@ -92,7 +95,9 @@ try {
     if (-not (Get-Command -Name Get-ScheduledTask -ErrorAction SilentlyContinue)) {
         throw 'Get-ScheduledTask is not available (Windows 8 / Server 2012 or later required)'
     }
-    $tasks = Get-ScheduledTask | Sort-Object -Property TaskPath, TaskName
+    $taskErrors = $null
+    $tasks = Get-ScheduledTask -ErrorAction SilentlyContinue -ErrorVariable taskErrors |
+        Sort-Object -Property TaskPath, TaskName
     foreach ($task in $tasks) {
         $principal = $task.Principal
         $user = Resolve-Principal (Format-Field $principal.UserId)
@@ -110,6 +115,9 @@ try {
             (Format-Field $task.State)
         )
         Write-Host ($fields -join '|')
+    }
+    foreach ($taskError in $taskErrors) {
+        Write-Host ('error|' + (Format-Field $taskError.Exception.Message))
     }
 } catch {
     Write-Host ('error|' + (Format-Field $_.Exception.Message))

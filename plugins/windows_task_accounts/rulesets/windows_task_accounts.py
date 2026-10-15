@@ -129,8 +129,10 @@ def _parameter_form() -> Dictionary:
                         "Tasks matching one of these patterns are not evaluated at all, also "
                         "not for changes since the service discovery. Without this setting "
                         "the tasks of Windows itself (<tt>\\\\Microsoft\\\\.*</tt>) are "
-                        "ignored; to evaluate them too, set this option with an empty list. "
-                        + _TASK_PATTERN_HELP
+                        "ignored. The list replaces this default: add "
+                        "<tt>\\\\Microsoft\\\\.*</tt> to keep ignoring "
+                        "the tasks of Windows itself, or leave the list empty to "
+                        "evaluate them too. " + _TASK_PATTERN_HELP
                     ),
                     element_template=RegularExpression(
                         title=Title("Task"),
