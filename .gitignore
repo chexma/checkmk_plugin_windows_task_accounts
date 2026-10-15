@@ -1,10 +1,4 @@
-# Claude Code: only shared project settings are tracked. Login, history and
-# memory live in the "checkmk-claude-config" Docker volume, not here; the
-# patterns below are a safety net in case something lands here anyway.
-/.claude/*
-!/.claude/settings.json
-!/.claude/hooks/
-# Plugin-specific Claude instructions stay private (see README)
+# Plugin-specific Claude instructions stay private
 CLAUDE.local.md
 
 # Scratch space (test data, agent output; not linked into the site)
@@ -25,3 +19,13 @@ htmlcov/
 
 # Built MKPs (.devcontainer/build.sh copies them here; CI attaches them to releases)
 /*.mkp
+
+# Development environment, not part of the plugin: kept locally, not in the repo
+/.devcontainer/
+/.github/
+/pyproject.toml
+/.flake8
+/.claude/
+/CLAUDE.md
+/docs/superpowers/
+/.superpowers/

@@ -195,17 +195,13 @@ baking agents.
 
 ## Development
 
-The repo is based on
-[checkmk-plugin-template](https://github.com/chexma/checkmk-plugin-template)
-(devcontainer with a Checkmk site; see its README for the environment).
+Developed in a devcontainer with a Checkmk site based on
+[checkmk-plugin-template](https://github.com/chexma/checkmk-plugin-template).
+The development environment (devcontainer, CI, tool configuration, design
+documents) is not part of this repository. The tests in `tests/` run with
+the site's pytest, the plugin directory mounted as
+`~/local/lib/python3/cmk_addons/plugins/windows_task_accounts`.
 
-```bash
-.devcontainer/ci.sh                    # lint, tests, cmk-validate-plugins
-.devcontainer/build.sh                 # build the MKP from ./package
-.devcontainer/test-host.sh <host> <agent-output-file>   # host with canned agent output
-```
-
-Design and decisions: `docs/superpowers/specs/2026-10-15-task-accounts-design.md`.
 Changes: `Changelog.md`.
 
 ## License
