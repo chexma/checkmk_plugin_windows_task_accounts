@@ -7,7 +7,7 @@
                 "Task Accounts' per host, a HW/SW inventory table with a view "
                 'for searching accounts across hosts, and the agent plugin '
                 'windows_task_accounts.ps1, deployed with the agent bakery.\n',
- 'download_url': '',
+ 'download_url': 'https://github.com/chexma/checkmk_plugin_windows_task_accounts',
  'files': {'cmk_addons_plugins': ['windows_task_accounts/agent_based/windows_task_accounts.py',
                                   'windows_task_accounts/agents/windows_task_accounts.ps1',
                                   'windows_task_accounts/bakery/windows_task_accounts.py',
