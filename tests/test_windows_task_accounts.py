@@ -4,13 +4,17 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Tests for the plugin family windows_task_accounts. All names are fictional."""
 
+from pathlib import Path
+
 import pytest
 from cmk.agent_based.v2 import Metric, Result, Service, State, TableRow
 from cmk_addons.plugins.windows_task_accounts.agent_based import windows_task_accounts as ta
+from cmk_addons.plugins.windows_task_accounts.bakery import windows_task_accounts as bakery
 from cmk_addons.plugins.windows_task_accounts.graphing import windows_task_accounts as graphing
 from cmk_addons.plugins.windows_task_accounts.inventory_ui import (
     windows_task_accounts as inventory_ui,
 )
+from cmk_addons.plugins.windows_task_accounts.rulesets import agent_config
 from cmk_addons.plugins.windows_task_accounts.rulesets import inventory as inventory_rules
 from cmk_addons.plugins.windows_task_accounts.rulesets import windows_task_accounts as rules
 
@@ -937,3 +941,55 @@ def test_graphing_uses_the_metrics_of_the_check(section) -> None:
     }
     assert set(graphing.graph_windows_task_accounts.simple_lines) == yielded
     assert set(graphing.perfometer_windows_task_accounts.segments) <= yielded
+
+
+# --- bakery -----------------------------------------------------------------
+
+
+def test_bakery_rule_form_builds() -> None:
+    form = agent_config.rule_spec_windows_task_accounts_bakery.parameter_form()
+    assert set(form.elements) == {"deployment", "interval"}
+    assert agent_config.rule_spec_windows_task_accounts_bakery.name == (
+        bakery.bakery_plugin_windows_task_accounts.name
+    )
+
+
+def _bake(rule: dict) -> list:
+    plugin = bakery.bakery_plugin_windows_task_accounts
+    return list(plugin.files_function(plugin.parameter_parser(rule)))
+
+
+def test_bakery_deploys_the_windows_plugin() -> None:
+    (plugin,) = _bake({"deployment": ("deploy", None)})
+    assert str(plugin.base_os) == "windows"
+    assert str(plugin.source) == "windows_task_accounts.ps1"
+    assert plugin.interval is None
+
+
+def test_bakery_interval() -> None:
+    (plugin,) = _bake({"deployment": ("deploy", None), "interval": 3600.0})
+    assert plugin.interval == 3600
+
+
+def test_bakery_do_not_deploy() -> None:
+    assert not _bake({"deployment": ("do_not_deploy", None), "interval": 3600.0})
+
+
+def test_agent_plugin_exists_and_is_ascii() -> None:
+    # The bakery takes the source from the family's agents/ directory. Windows
+    # PowerShell 5.1 reads a script without BOM in the ANSI code page.
+    (plugin,) = _bake({"deployment": ("deploy", None)})
+    source = Path(bakery.__file__).parent.parent / "agents" / plugin.source
+    assert source.read_bytes().isascii()
+    text = source.read_text()
+    assert "<<<windows_task_accounts:sep(124)>>>" in text
+    assert "Get-ScheduledTask" in text
+
+
+def test_rules_are_named_like_the_service() -> None:
+    for rule in (
+        rules.rule_spec_windows_task_accounts,
+        agent_config.rule_spec_windows_task_accounts_bakery,
+        inventory_rules.rule_spec_windows_task_accounts_inventory,
+    ):
+        assert rule.title.localize(lambda x: x) == "Windows Task Accounts"
